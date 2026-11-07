@@ -104,6 +104,7 @@ Item {
     active: root.monitorShouldBeActive
     sourceComponent: Component {
       IdleMonitor {
+        enabled: true
         timeout: root.displayDimSeconds
         respectInhibitors: true
         onIsIdleChanged: isIdle ? root.handleDimIdle(false) : root.handleActive()
@@ -124,6 +125,7 @@ Item {
         displayDimSeconds: root.displayDimSeconds, dimPercentage: root.dimPercentage,
         isDimmed: root.isDimmed, isIdle: root.isIdle,
         monitorLoaded: idleMonitorLoader.item !== null,
+        monitorEnabled: idleMonitorLoader.item ? idleMonitorLoader.item.enabled : false,
         monitorTimeout: idleMonitorLoader.item ? idleMonitorLoader.item.timeout : 0 })
     }
     function triggerDim(): void { root.handleDimIdle(true) }

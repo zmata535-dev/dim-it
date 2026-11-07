@@ -123,6 +123,7 @@ BarWidget {
     active: root.enabled && !root.stayAwake
     sourceComponent: Component {
       IdleMonitor {
+        enabled: true
         timeout: root.barDimSeconds
         respectInhibitors: true
       }
@@ -165,6 +166,7 @@ BarWidget {
         barDimSeconds: root.barDimSeconds, themeForeground: String(root.themeForeground),
         barActive: root.bar ? String(root.bar.urgent) : "",
         monitorLoaded: idleMonitor.item !== null,
+        monitorEnabled: idleMonitor.item ? idleMonitor.item.enabled : false,
         monitorTimeout: idleMonitor.item ? idleMonitor.item.timeout : 0 })
     }
   }
@@ -239,7 +241,7 @@ BarWidget {
           width: parent.width
           spacing: Style.space(6)
           Repeater {
-            model: [15, 30, 60, 90, 120, 180, 300]
+            model: [5, 10, 15, 30, 60, 90, 120, 180, 300]
             Button {
               required property int modelData
               text: root.formatSeconds(modelData)
@@ -270,7 +272,7 @@ BarWidget {
           width: parent.width
           spacing: Style.space(6)
           Repeater {
-            model: [15, 30, 60, 90, 120, 180, 300]
+            model: [5, 10, 15, 30, 60, 90, 120, 180, 300]
             Button {
               required property int modelData
               text: root.formatSeconds(modelData)
