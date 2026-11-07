@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "dim-it",
+  "name": "Dim It",
+  "version": "1.0.0",
+  "author": "zm",
+  "description": "Dim the display after inactivity and restore it on activity.",
+  "kinds": ["service", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Dim It",
+    "description": "Display auto-dimming with a temporary theme-based indicator dim.",
+    "category": "Settings",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}
