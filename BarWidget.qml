@@ -17,6 +17,7 @@ BarWidget {
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
   property int displayDimSeconds: 60
   property int barDimSeconds: 60
+  property string timerScale: "seconds"
   property int dimPercentage: 25
   property string foregroundMode: "dark"
   property bool enabled: true
@@ -24,8 +25,15 @@ BarWidget {
   property bool popupOpen: false
   property bool testDimActive: false
   property bool settingsLoaded: false
+  property bool settingsDirty: false
+  property double lastActivityAt: Date.now()
+  property int countdownTick: 0
+  readonly property int idleElapsedSeconds: {
+    countdownTick
+    return Math.max(0, Math.floor((Date.now() - lastActivityAt) / 1000))
+  }
   readonly property bool opened: popupOpen
-  readonly property bool isIdle: idleMonitor.item ? idleMonitor.item.isIdle : false
+  readonly property bool isIdle: activityMonitor.isIdle && idleElapsedSeconds >= barDimSeconds
   readonly property bool indicatorDimmed: root.isIdle || root.testDimActive
   readonly property color themeForeground: root.bar ? root.bar.barForeground : Commons.Color.bar.text
   readonly property string foregroundScript: Quickshell.env("HOME") + "/.config/omarchy/plugins/dim-it/bar-foreground.py"
@@ -52,7 +60,17 @@ BarWidget {
   }
   onIndicatorDimmedChanged: syncBarForeground()
   onForegroundModeChanged: if (indicatorDimmed) syncBarForeground()
-  onEnabledChanged: if (!enabled) testDimActive = false
+  onEnabledChanged: {
+    lastActivityAt = Date.now()
+    if (!enabled) {
+      testDimActive = false
+      popupOpen = false
+      Quickshell.execDetached(["omarchy-shell", "dim-it.service", "triggerActive"])
+    }
+  }
+  function secondsUntilDim(timeoutSeconds) {
+    return Math.max(0, timeoutSeconds - idleElapsedSeconds)
+  }
   function formatSeconds(seconds) {
     if (seconds < 60) return strings.t("time.seconds").arg(seconds)
     var minutes = Math.floor(seconds / 60)
@@ -60,35 +78,42 @@ BarWidget {
     return remainder ? strings.t("time.minute_seconds").arg(minutes).arg(remainder) : strings.t(minutes === 1 ? "time.minute" : "time.minutes").arg(minutes)
   }
   function applyConfig(raw) {
+    if (settingsDirty) return
     var parsed = null
     try { parsed = JSON.parse(String(raw || "")) } catch (e) { parsed = null }
     if (!parsed || typeof parsed !== "object") return
     var legacySeconds = typeof parsed.dimSeconds === "number" && parsed.dimSeconds >= 5 && parsed.dimSeconds <= 3600
       ? Math.round(parsed.dimSeconds) : 60
-    displayDimSeconds = typeof parsed.displayDimSeconds === "number" && parsed.displayDimSeconds >= 5 && parsed.displayDimSeconds <= 3600
+    displayDimSeconds = typeof parsed.displayDimSeconds === "number" && parsed.displayDimSeconds >= 5 && parsed.displayDimSeconds <= 18000
       ? Math.round(parsed.displayDimSeconds) : legacySeconds
-    barDimSeconds = typeof parsed.barDimSeconds === "number" && parsed.barDimSeconds >= 5 && parsed.barDimSeconds <= 3600
+    barDimSeconds = typeof parsed.barDimSeconds === "number" && parsed.barDimSeconds >= 5 && parsed.barDimSeconds <= 18000
       ? Math.round(parsed.barDimSeconds) : legacySeconds
+    timerScale = parsed.timerScale === "minutes" ? "minutes" : "seconds"
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage >= 1 && parsed.dimPercentage <= 100) dimPercentage = Math.round(parsed.dimPercentage)
     foregroundMode = parsed.foregroundMode === "dark" || parsed.foregroundMode === "very-dark" || parsed.foregroundMode === "black"
       ? parsed.foregroundMode : "dark"
     if (typeof parsed.enabled === "boolean") enabled = parsed.enabled
+    settingsDirty = false
   }
   function saveConfig() {
-    var data = { displayDimSeconds: displayDimSeconds, barDimSeconds: barDimSeconds,
+    var data = { displayDimSeconds: displayDimSeconds, barDimSeconds: barDimSeconds, timerScale: timerScale,
       dimPercentage: dimPercentage, foregroundMode: foregroundMode, enabled: enabled }
     var output = JSON.stringify(data, null, 2) + "\n"
     if (configFile && typeof configFile.setText === "function") configFile.setText(output)
+    settingsDirty = false
   }
-  function selectDisplayTimeout(seconds) { displayDimSeconds = seconds; saveConfig() }
-  function selectBarTimeout(seconds) { barDimSeconds = seconds; saveConfig() }
-  function selectLevel(percent) { dimPercentage = percent; saveConfig() }
+  function selectDisplayTimeout(seconds) { displayDimSeconds = seconds; settingsDirty = true }
+  function selectBarTimeout(seconds) { barDimSeconds = seconds; settingsDirty = true }
+  function selectLevel(percent) { dimPercentage = percent; settingsDirty = true }
+  function saveSettings() { saveConfig() }
+  function restartShell() { Quickshell.execDetached(["omarchy", "restart", "shell"]) }
 
   property FileView configFile: FileView {
     path: root.configPath
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
+    onSaved: root.settingsDirty = false
     onLoaded: {
       root.applyConfig(text())
       if (!root.settingsLoaded) {
@@ -129,6 +154,20 @@ BarWidget {
       }
     }
   }
+  IdleMonitor {
+    id: activityMonitor
+    enabled: root.enabled && !root.stayAwake
+    timeout: 1
+    respectInhibitors: true
+    onIsIdleChanged: root.lastActivityAt = isIdle ? Date.now() - 1000 : Date.now()
+  }
+  Timer {
+    interval: 1000
+    running: root.enabled && !root.stayAwake
+    repeat: true
+    onTriggered: root.countdownTick++
+  }
+  onStayAwakeChanged: lastActivityAt = Date.now()
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -177,7 +216,10 @@ BarWidget {
     bar: root.bar
     owner: root
     open: root.popupOpen
-    onOpenChanged: if (root.popupOpen !== open) root.popupOpen = open
+    onOpenChanged: {
+      if (root.popupOpen !== open) root.popupOpen = open
+      if (!open && root.testDimActive) root.restore()
+    }
     contentWidth: popup.fittedContentWidth(Style.space(360))
     contentHeight: popup.fittedContentHeight(contentColumn.implicitHeight)
 
@@ -210,10 +252,15 @@ BarWidget {
           }
           Text {
             textFormat: Text.PlainText
-            text: root.enabled ? strings.t("panel.after_enabled").arg(root.formatSeconds(root.displayDimSeconds)).arg(root.formatSeconds(root.barDimSeconds)) : strings.t("panel.paused")
+            text: !root.enabled ? strings.t("panel.paused")
+              : root.stayAwake ? strings.t("panel.stay_awake")
+              : strings.t("panel.after_enabled")
+                .arg(root.formatSeconds(root.secondsUntilDim(root.displayDimSeconds)))
+                .arg(root.formatSeconds(root.secondsUntilDim(root.barDimSeconds)))
             color: Commons.Color.popups.text
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
           }
         }
         ToggleSwitch {
@@ -231,6 +278,37 @@ BarWidget {
         spacing: Style.space(7)
         Text {
           textFormat: Text.PlainText
+          text: strings.t("panel.timer_scale")
+          color: Commons.Color.popups.text
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+        Flow {
+          width: parent.width
+          spacing: Style.space(6)
+          Repeater {
+            model: ["seconds", "minutes"]
+            Button {
+              required property string modelData
+              text: strings.t(modelData === "seconds" ? "time.scale_seconds" : "time.scale_minutes")
+              selected: root.timerScale === modelData
+              active: selected
+              bordered: true
+              horizontalPadding: Style.space(9)
+              verticalPadding: Style.space(5)
+              foreground: Commons.Color.popups.text
+              onClicked: { root.timerScale = modelData; root.settingsDirty = true }
+            }
+          }
+        }
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(7)
+        Text {
+          textFormat: Text.PlainText
           text: strings.t("panel.display_timer")
           color: Commons.Color.popups.text
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -241,17 +319,17 @@ BarWidget {
           width: parent.width
           spacing: Style.space(6)
           Repeater {
-            model: [5, 10, 15, 30, 60, 90, 120, 180, 300]
+            model: [10, 30, 45, 60, 120, 300]
             Button {
               required property int modelData
-              text: root.formatSeconds(modelData)
-              selected: root.displayDimSeconds === modelData
+              text: root.timerScale === "minutes" ? strings.t(modelData === 1 ? "time.minute" : "time.minutes").arg(modelData) : strings.t("time.seconds").arg(modelData)
+              selected: root.displayDimSeconds === modelData * (root.timerScale === "minutes" ? 60 : 1)
               active: selected
               bordered: true
               horizontalPadding: Style.space(9)
               verticalPadding: Style.space(5)
               foreground: Commons.Color.popups.text
-              onClicked: root.selectDisplayTimeout(modelData)
+              onClicked: root.selectDisplayTimeout(modelData * (root.timerScale === "minutes" ? 60 : 1))
             }
           }
         }
@@ -272,17 +350,17 @@ BarWidget {
           width: parent.width
           spacing: Style.space(6)
           Repeater {
-            model: [5, 10, 15, 30, 60, 90, 120, 180, 300]
+            model: [5, 10, 15, 30, 45]
             Button {
               required property int modelData
-              text: root.formatSeconds(modelData)
-              selected: root.barDimSeconds === modelData
+              text: root.timerScale === "minutes" ? strings.t(modelData === 1 ? "time.minute" : "time.minutes").arg(modelData) : strings.t("time.seconds").arg(modelData)
+              selected: root.barDimSeconds === modelData * (root.timerScale === "minutes" ? 60 : 1)
               active: selected
               bordered: true
               horizontalPadding: Style.space(9)
               verticalPadding: Style.space(5)
               foreground: Commons.Color.popups.text
-              onClicked: root.selectBarTimeout(modelData)
+              onClicked: root.selectBarTimeout(modelData * (root.timerScale === "minutes" ? 60 : 1))
             }
           }
         }
@@ -337,7 +415,7 @@ BarWidget {
             active: selected
             bordered: true
             foreground: Commons.Color.popups.text
-            onClicked: { root.foregroundMode = "dark"; root.saveConfig() }
+            onClicked: { root.foregroundMode = "dark"; root.settingsDirty = true }
           }
           Button {
             text: strings.t("panel.dark_gray")
@@ -345,7 +423,7 @@ BarWidget {
             active: selected
             bordered: true
             foreground: Commons.Color.popups.text
-            onClicked: { root.foregroundMode = "very-dark"; root.saveConfig() }
+            onClicked: { root.foregroundMode = "very-dark"; root.settingsDirty = true }
           }
           Button {
             text: strings.t("panel.black")
@@ -353,7 +431,7 @@ BarWidget {
             active: selected
             bordered: true
             foreground: Commons.Color.popups.text
-            onClicked: { root.foregroundMode = "black"; root.saveConfig() }
+            onClicked: { root.foregroundMode = "black"; root.settingsDirty = true }
           }
         }
       }
@@ -373,6 +451,18 @@ BarWidget {
       Row {
         width: parent.width
         spacing: Style.space(8)
+        Button {
+          text: strings.t("panel.save")
+          bordered: true
+          foreground: Commons.Color.popups.text
+          onClicked: root.saveSettings()
+        }
+        Button {
+          text: strings.t("panel.restart_shell")
+          bordered: true
+          foreground: Commons.Color.popups.text
+          onClicked: root.restartShell()
+        }
         Button {
           text: strings.t("panel.test")
           bordered: true

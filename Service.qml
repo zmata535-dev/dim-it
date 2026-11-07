@@ -21,14 +21,24 @@ Item {
 
   readonly property bool monitorShouldBeActive: enabled && !stayAwake
 
+  function restartIdleMonitor() {
+    if (!root.monitorShouldBeActive) return
+    idleMonitorLoader.active = false
+    Qt.callLater(() => {
+      if (root.monitorShouldBeActive) idleMonitorLoader.active = true
+    })
+  }
+
   function applyConfig(raw) {
     var parsed = null
     try { parsed = JSON.parse(String(raw || "")) } catch (e) { parsed = null }
     if (!parsed || typeof parsed !== "object") return
-    displayDimSeconds = typeof parsed.displayDimSeconds === "number" && parsed.displayDimSeconds >= 5 && parsed.displayDimSeconds <= 3600
+    var previousDisplayDimSeconds = displayDimSeconds
+    displayDimSeconds = typeof parsed.displayDimSeconds === "number" && parsed.displayDimSeconds >= 5 && parsed.displayDimSeconds <= 18000
       ? Math.round(parsed.displayDimSeconds)
       : typeof parsed.dimSeconds === "number" && parsed.dimSeconds >= 5 && parsed.dimSeconds <= 3600
         ? Math.round(parsed.dimSeconds) : 60
+    if (displayDimSeconds !== previousDisplayDimSeconds) restartIdleMonitor()
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage >= 1 && parsed.dimPercentage <= 100)
       dimPercentage = Math.round(parsed.dimPercentage)
     if (typeof parsed.enabled === "boolean") enabled = parsed.enabled
