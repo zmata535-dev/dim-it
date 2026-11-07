@@ -15,7 +15,8 @@ BarWidget {
 
   readonly property string configPath: Quickshell.env("HOME") + "/.config/omarchy/dim-it.json"
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
-  property int dimSeconds: 60
+  property int displayDimSeconds: 60
+  property int barDimSeconds: 60
   property int dimPercentage: 25
   property string foregroundMode: "dark"
   property bool enabled: true
@@ -62,18 +63,25 @@ BarWidget {
     var parsed = null
     try { parsed = JSON.parse(String(raw || "")) } catch (e) { parsed = null }
     if (!parsed || typeof parsed !== "object") return
-    if (typeof parsed.dimSeconds === "number" && parsed.dimSeconds >= 5 && parsed.dimSeconds <= 3600) dimSeconds = Math.round(parsed.dimSeconds)
+    var legacySeconds = typeof parsed.dimSeconds === "number" && parsed.dimSeconds >= 5 && parsed.dimSeconds <= 3600
+      ? Math.round(parsed.dimSeconds) : 60
+    displayDimSeconds = typeof parsed.displayDimSeconds === "number" && parsed.displayDimSeconds >= 5 && parsed.displayDimSeconds <= 3600
+      ? Math.round(parsed.displayDimSeconds) : legacySeconds
+    barDimSeconds = typeof parsed.barDimSeconds === "number" && parsed.barDimSeconds >= 5 && parsed.barDimSeconds <= 3600
+      ? Math.round(parsed.barDimSeconds) : legacySeconds
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage >= 1 && parsed.dimPercentage <= 100) dimPercentage = Math.round(parsed.dimPercentage)
     foregroundMode = parsed.foregroundMode === "dark" || parsed.foregroundMode === "very-dark" || parsed.foregroundMode === "black"
       ? parsed.foregroundMode : "dark"
     if (typeof parsed.enabled === "boolean") enabled = parsed.enabled
   }
   function saveConfig() {
-    var data = { dimSeconds: dimSeconds, dimPercentage: dimPercentage, foregroundMode: foregroundMode, enabled: enabled }
+    var data = { displayDimSeconds: displayDimSeconds, barDimSeconds: barDimSeconds,
+      dimPercentage: dimPercentage, foregroundMode: foregroundMode, enabled: enabled }
     var output = JSON.stringify(data, null, 2) + "\n"
     if (configFile && typeof configFile.setText === "function") configFile.setText(output)
   }
-  function selectTimeout(seconds) { dimSeconds = seconds; saveConfig() }
+  function selectDisplayTimeout(seconds) { displayDimSeconds = seconds; saveConfig() }
+  function selectBarTimeout(seconds) { barDimSeconds = seconds; saveConfig() }
   function selectLevel(percent) { dimPercentage = percent; saveConfig() }
 
   property FileView configFile: FileView {
@@ -115,7 +123,7 @@ BarWidget {
     active: root.enabled && !root.stayAwake
     sourceComponent: Component {
       IdleMonitor {
-        timeout: root.dimSeconds
+        timeout: root.barDimSeconds
         respectInhibitors: true
       }
     }
@@ -137,7 +145,7 @@ BarWidget {
       : root.stayAwake ? strings.t("tooltip.stay_awake")
       : root.testDimActive ? strings.t("tooltip.test_dim")
       : root.isIdle ? strings.t("tooltip.idle")
-      : strings.t("tooltip.after").arg(root.formatSeconds(root.dimSeconds))
+      : strings.t("tooltip.after").arg(root.formatSeconds(root.barDimSeconds))
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.RightButton) { root.enabled = !root.enabled; root.saveConfig() }
       else root.toggle()
@@ -153,7 +161,8 @@ BarWidget {
     function restore(): void { root.broadcast("restore") }
     function status(): string {
       return JSON.stringify({ isIdle: root.isIdle, testDimActive: root.testDimActive,
-        foregroundMode: root.foregroundMode, themeForeground: String(root.themeForeground),
+        foregroundMode: root.foregroundMode, displayDimSeconds: root.displayDimSeconds,
+        barDimSeconds: root.barDimSeconds, themeForeground: String(root.themeForeground),
         barActive: root.bar ? String(root.bar.urgent) : "",
         monitorLoaded: idleMonitor.item !== null,
         monitorTimeout: idleMonitor.item ? idleMonitor.item.timeout : 0 })
@@ -199,7 +208,7 @@ BarWidget {
           }
           Text {
             textFormat: Text.PlainText
-            text: root.enabled ? strings.t("panel.after_enabled").arg(root.formatSeconds(root.dimSeconds)) : strings.t("panel.paused")
+            text: root.enabled ? strings.t("panel.after_enabled").arg(root.formatSeconds(root.displayDimSeconds)).arg(root.formatSeconds(root.barDimSeconds)) : strings.t("panel.paused")
             color: Commons.Color.popups.text
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -220,7 +229,7 @@ BarWidget {
         spacing: Style.space(7)
         Text {
           textFormat: Text.PlainText
-          text: strings.t("panel.timeout")
+          text: strings.t("panel.display_timer")
           color: Commons.Color.popups.text
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.caption
@@ -234,13 +243,44 @@ BarWidget {
             Button {
               required property int modelData
               text: root.formatSeconds(modelData)
-              selected: root.dimSeconds === modelData
+              selected: root.displayDimSeconds === modelData
               active: selected
               bordered: true
               horizontalPadding: Style.space(9)
               verticalPadding: Style.space(5)
               foreground: Commons.Color.popups.text
-              onClicked: root.selectTimeout(modelData)
+              onClicked: root.selectDisplayTimeout(modelData)
+            }
+          }
+        }
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(7)
+        Text {
+          textFormat: Text.PlainText
+          text: strings.t("panel.bar_timer")
+          color: Commons.Color.popups.text
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+        Flow {
+          width: parent.width
+          spacing: Style.space(6)
+          Repeater {
+            model: [15, 30, 60, 90, 120, 180, 300]
+            Button {
+              required property int modelData
+              text: root.formatSeconds(modelData)
+              selected: root.barDimSeconds === modelData
+              active: selected
+              bordered: true
+              horizontalPadding: Style.space(9)
+              verticalPadding: Style.space(5)
+              foreground: Commons.Color.popups.text
+              onClicked: root.selectBarTimeout(modelData)
             }
           }
         }

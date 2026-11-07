@@ -4,7 +4,7 @@
   "name": "Dim It",
   "version": "1.0.0",
   "author": "zm",
-  "description": "Dim the display after inactivity and restore it on activity.",
+  "description": "Dim the display and bar foreground on separate inactivity timers.",
   "kinds": ["service", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Dim It",
-    "description": "Display auto-dimming with a temporary theme-based indicator dim.",
+    "description": "Display dimming and temporary bar-color timers.",
     "category": "Settings",
     "defaultSection": "right",
     "allowMultiple": false

@@ -11,7 +11,7 @@ Item {
   readonly property string configPath: home + "/.config/omarchy/dim-it.json"
   readonly property string stayAwakePath: home + "/.local/state/omarchy/indicators/stay-awake"
 
-  property int dimSeconds: 60
+  property int displayDimSeconds: 60
   property int dimPercentage: 25
   property bool enabled: true
   property bool stayAwake: false
@@ -25,8 +25,10 @@ Item {
     var parsed = null
     try { parsed = JSON.parse(String(raw || "")) } catch (e) { parsed = null }
     if (!parsed || typeof parsed !== "object") return
-    if (typeof parsed.dimSeconds === "number" && parsed.dimSeconds >= 5 && parsed.dimSeconds <= 3600)
-      dimSeconds = Math.round(parsed.dimSeconds)
+    displayDimSeconds = typeof parsed.displayDimSeconds === "number" && parsed.displayDimSeconds >= 5 && parsed.displayDimSeconds <= 3600
+      ? Math.round(parsed.displayDimSeconds)
+      : typeof parsed.dimSeconds === "number" && parsed.dimSeconds >= 5 && parsed.dimSeconds <= 3600
+        ? Math.round(parsed.dimSeconds) : 60
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage >= 1 && parsed.dimPercentage <= 100)
       dimPercentage = Math.round(parsed.dimPercentage)
     if (typeof parsed.enabled === "boolean") enabled = parsed.enabled
@@ -102,7 +104,7 @@ Item {
     active: root.monitorShouldBeActive
     sourceComponent: Component {
       IdleMonitor {
-        timeout: root.dimSeconds
+        timeout: root.displayDimSeconds
         respectInhibitors: true
         onIsIdleChanged: isIdle ? root.handleDimIdle(false) : root.handleActive()
       }
@@ -119,7 +121,7 @@ Item {
     target: "dim-it.service"
     function status(): string {
       return JSON.stringify({ enabled: root.enabled, stayAwake: root.stayAwake,
-        dimSeconds: root.dimSeconds, dimPercentage: root.dimPercentage,
+        displayDimSeconds: root.displayDimSeconds, dimPercentage: root.dimPercentage,
         isDimmed: root.isDimmed, isIdle: root.isIdle,
         monitorLoaded: idleMonitorLoader.item !== null,
         monitorTimeout: idleMonitorLoader.item ? idleMonitorLoader.item.timeout : 0 })
