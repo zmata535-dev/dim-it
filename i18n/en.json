@@ -13,7 +13,6 @@
   "panel.paused": "Paused",
   "panel.display_timer": "DISPLAY DIM",
   "panel.bar_timer": "BAR COLOR",
-  "panel.timer_scale": "TIME UNIT",
   "panel.brightness": "BRIGHTNESS",
   "panel.stay_awake": "Stay Awake is on.",
   "panel.theme_color": "Idle bar color restores on activity.",
@@ -24,7 +23,5 @@
   "panel.test": "Test",
   "panel.restore": "Restore",
   "panel.save": "Save",
-  "panel.restart_shell": "Restart Shell",
-  "time.scale_seconds": "Seconds",
-  "time.scale_minutes": "Minutes"
+  "panel.restart_shell": "Restart Shell"
 }

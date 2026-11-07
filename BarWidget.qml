@@ -17,7 +17,6 @@ BarWidget {
   readonly property string stayAwakePath: Quickshell.env("HOME") + "/.local/state/omarchy/indicators/stay-awake"
   property int displayDimSeconds: 60
   property int barDimSeconds: 60
-  property string timerScale: "seconds"
   property int dimPercentage: 25
   property string foregroundMode: "dark"
   property bool enabled: true
@@ -88,7 +87,6 @@ BarWidget {
       ? Math.round(parsed.displayDimSeconds) : legacySeconds
     barDimSeconds = typeof parsed.barDimSeconds === "number" && parsed.barDimSeconds >= 5 && parsed.barDimSeconds <= 18000
       ? Math.round(parsed.barDimSeconds) : legacySeconds
-    timerScale = parsed.timerScale === "minutes" ? "minutes" : "seconds"
     if (typeof parsed.dimPercentage === "number" && parsed.dimPercentage >= 1 && parsed.dimPercentage <= 100) dimPercentage = Math.round(parsed.dimPercentage)
     foregroundMode = parsed.foregroundMode === "dark" || parsed.foregroundMode === "very-dark" || parsed.foregroundMode === "black"
       ? parsed.foregroundMode : "dark"
@@ -96,7 +94,7 @@ BarWidget {
     settingsDirty = false
   }
   function saveConfig() {
-    var data = { displayDimSeconds: displayDimSeconds, barDimSeconds: barDimSeconds, timerScale: timerScale,
+    var data = { displayDimSeconds: displayDimSeconds, barDimSeconds: barDimSeconds,
       dimPercentage: dimPercentage, foregroundMode: foregroundMode, enabled: enabled }
     var output = JSON.stringify(data, null, 2) + "\n"
     if (configFile && typeof configFile.setText === "function") configFile.setText(output)
@@ -278,37 +276,6 @@ BarWidget {
         spacing: Style.space(7)
         Text {
           textFormat: Text.PlainText
-          text: strings.t("panel.timer_scale")
-          color: Commons.Color.popups.text
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.caption
-          font.bold: true
-        }
-        Flow {
-          width: parent.width
-          spacing: Style.space(6)
-          Repeater {
-            model: ["seconds", "minutes"]
-            Button {
-              required property string modelData
-              text: strings.t(modelData === "seconds" ? "time.scale_seconds" : "time.scale_minutes")
-              selected: root.timerScale === modelData
-              active: selected
-              bordered: true
-              horizontalPadding: Style.space(9)
-              verticalPadding: Style.space(5)
-              foreground: Commons.Color.popups.text
-              onClicked: { root.timerScale = modelData; root.settingsDirty = true }
-            }
-          }
-        }
-      }
-
-      Column {
-        width: parent.width
-        spacing: Style.space(7)
-        Text {
-          textFormat: Text.PlainText
           text: strings.t("panel.display_timer")
           color: Commons.Color.popups.text
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -322,14 +289,14 @@ BarWidget {
             model: [10, 30, 45, 60, 120, 300]
             Button {
               required property int modelData
-              text: root.timerScale === "minutes" ? strings.t(modelData === 1 ? "time.minute" : "time.minutes").arg(modelData) : strings.t("time.seconds").arg(modelData)
-              selected: root.displayDimSeconds === modelData * (root.timerScale === "minutes" ? 60 : 1)
+              text: strings.t("time.seconds").arg(modelData)
+              selected: root.displayDimSeconds === modelData
               active: selected
               bordered: true
               horizontalPadding: Style.space(9)
               verticalPadding: Style.space(5)
               foreground: Commons.Color.popups.text
-              onClicked: root.selectDisplayTimeout(modelData * (root.timerScale === "minutes" ? 60 : 1))
+              onClicked: root.selectDisplayTimeout(modelData)
             }
           }
         }
@@ -353,14 +320,14 @@ BarWidget {
             model: [5, 10, 15, 30, 45]
             Button {
               required property int modelData
-              text: root.timerScale === "minutes" ? strings.t(modelData === 1 ? "time.minute" : "time.minutes").arg(modelData) : strings.t("time.seconds").arg(modelData)
-              selected: root.barDimSeconds === modelData * (root.timerScale === "minutes" ? 60 : 1)
+              text: strings.t("time.seconds").arg(modelData)
+              selected: root.barDimSeconds === modelData
               active: selected
               bordered: true
               horizontalPadding: Style.space(9)
               verticalPadding: Style.space(5)
               foreground: Commons.Color.popups.text
-              onClicked: root.selectBarTimeout(modelData * (root.timerScale === "minutes" ? 60 : 1))
+              onClicked: root.selectBarTimeout(modelData)
             }
           }
         }
