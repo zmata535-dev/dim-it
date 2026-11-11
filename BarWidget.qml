@@ -25,6 +25,9 @@ BarWidget {
   property bool testDimActive: false
   property bool settingsLoaded: false
   property bool settingsDirty: false
+  property bool foregroundSyncPending: false
+  property bool monitorIdle: false
+  property int idleTransitionCount: 0
   property double lastActivityAt: Date.now()
   property int countdownTick: 0
   readonly property int idleElapsedSeconds: {
@@ -32,7 +35,7 @@ BarWidget {
     return Math.max(0, Math.floor((Date.now() - lastActivityAt) / 1000))
   }
   readonly property bool opened: popupOpen
-  readonly property bool isIdle: activityMonitor.isIdle && idleElapsedSeconds >= barDimSeconds
+  readonly property bool isIdle: monitorIdle && idleElapsedSeconds >= barDimSeconds
   readonly property bool indicatorDimmed: root.isIdle || root.testDimActive
   readonly property color themeForeground: root.bar ? root.bar.barForeground : Commons.Color.bar.text
   readonly property string foregroundScript: Quickshell.env("HOME") + "/.config/omarchy/plugins/dim-it/bar-foreground.py"
@@ -50,21 +53,28 @@ BarWidget {
   }
   function syncBarForeground() {
     if (!root.settingsLoaded) return
-    if (root.indicatorDimmed && root.bar) {
-      Quickshell.execDetached(["python3", root.foregroundScript, "apply", root.foregroundMode,
-        String(root.bar.barForeground), String(root.bar.urgent)])
-    } else {
-      Quickshell.execDetached(["python3", root.foregroundScript, "restore"])
+    if (foregroundSync.running) {
+      foregroundSyncPending = true
+      return
     }
+    if (root.indicatorDimmed && root.bar) {
+      foregroundSync.command = ["python3", root.foregroundScript, "apply", root.foregroundMode,
+        String(root.bar.barForeground), String(root.bar.urgent)]
+    } else {
+      foregroundSync.command = ["python3", root.foregroundScript, "restore"]
+    }
+    foregroundSync.running = true
   }
   onIndicatorDimmedChanged: syncBarForeground()
   onForegroundModeChanged: if (indicatorDimmed) syncBarForeground()
   onEnabledChanged: {
     lastActivityAt = Date.now()
     if (!enabled) {
+      monitorIdle = false
       testDimActive = false
       popupOpen = false
       Quickshell.execDetached(["omarchy-shell", "dim-it.service", "triggerActive"])
+      syncBarForeground()
     }
   }
   function secondsUntilDim(timeoutSeconds) {
@@ -126,6 +136,16 @@ BarWidget {
       }
     }
   }
+  Process {
+    id: foregroundSync
+    command: []
+    onExited: {
+      if (root.foregroundSyncPending) {
+        root.foregroundSyncPending = false
+        root.syncBarForeground()
+      }
+    }
+  }
   FileView {
     id: stayAwakeFile
     path: root.stayAwakePath
@@ -141,23 +161,20 @@ BarWidget {
     repeat: true
     onTriggered: { root.configFile.reload(); stayAwakeFile.reload() }
   }
-  Loader {
-    id: idleMonitor
-    active: root.enabled && !root.stayAwake
-    sourceComponent: Component {
-      IdleMonitor {
-        enabled: true
-        timeout: root.barDimSeconds
-        respectInhibitors: true
-      }
-    }
-  }
   IdleMonitor {
-    id: activityMonitor
+    id: idleMonitor
     enabled: root.enabled && !root.stayAwake
     timeout: 1
     respectInhibitors: true
-    onIsIdleChanged: root.lastActivityAt = isIdle ? Date.now() - 1000 : Date.now()
+    Component.onCompleted: {
+      root.monitorIdle = isIdle
+      if (isIdle) root.lastActivityAt = Date.now() - 1000
+    }
+    onIsIdleChanged: {
+      root.monitorIdle = isIdle
+      root.idleTransitionCount++
+      root.lastActivityAt = isIdle ? Date.now() - 1000 : Date.now()
+    }
   }
   Timer {
     interval: 1000
@@ -165,7 +182,10 @@ BarWidget {
     repeat: true
     onTriggered: root.countdownTick++
   }
-  onStayAwakeChanged: lastActivityAt = Date.now()
+  onStayAwakeChanged: {
+    lastActivityAt = Date.now()
+    if (stayAwake) monitorIdle = false
+  }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -202,9 +222,10 @@ BarWidget {
         foregroundMode: root.foregroundMode, displayDimSeconds: root.displayDimSeconds,
         barDimSeconds: root.barDimSeconds, themeForeground: String(root.themeForeground),
         barActive: root.bar ? String(root.bar.urgent) : "",
-        monitorLoaded: idleMonitor.item !== null,
-        monitorEnabled: idleMonitor.item ? idleMonitor.item.enabled : false,
-        monitorTimeout: idleMonitor.item ? idleMonitor.item.timeout : 0 })
+        idleTransitionCount: root.idleTransitionCount,
+        monitorLoaded: true,
+        monitorEnabled: idleMonitor.enabled,
+        monitorTimeout: idleMonitor.timeout })
     }
   }
 
